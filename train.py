@@ -27,6 +27,9 @@ def train(data_path):
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss()
 
+    # Mixed Precision
+    scaler = torch.cuda.amp.GradScaler(enabled=(DEVICE.type == 'cuda'))
+
     # Training loop
     for epoch in range(1, EPOCHS+1):
         model.train()
@@ -35,10 +38,15 @@ def train(data_path):
         for x, y in pbar:
             x, y = x.to(DEVICE), y.to(DEVICE)
             optimizer.zero_grad()
-            logits = model(x)
-            loss = criterion(logits.view(-1, VOCAB_SIZE), y.view(-1))
-            loss.backward()
-            optimizer.step()
+
+            with torch.cuda.amp.autocast(enabled=(DEVICE.type == 'cuda')):
+                logits = model(x)
+                loss = criterion(logits.view(-1, VOCAB_SIZE), y.view(-1))
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
             total_loss += loss.item()
             pbar.set_postfix(loss=loss.item())
         avg_loss = total_loss / len(dataloader)
