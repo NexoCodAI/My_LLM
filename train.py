@@ -9,9 +9,13 @@ from dataset import get_dataloader
 from utils import set_seed, ensure_dir
 from checkpoint import save_checkpoint
 
+# Optional: gradient accumulation for larger effective batch size
+GRADIENT_ACCUM_STEPS = 4
 
 def train(data_path):
     set_seed()
+    torch.backends.cudnn.benchmark = True  # optimize for consistent input sizes
+
     # Load data
     with open(data_path, 'r', encoding='utf-8') as f:
         text = f.read()
@@ -28,27 +32,32 @@ def train(data_path):
     criterion = nn.CrossEntropyLoss()
 
     # Mixed Precision
-    scaler = torch.cuda.amp.GradScaler(enabled=(DEVICE.type == 'cuda'))
+    scaler = torch.amp.GradScaler()
 
     # Training loop
     for epoch in range(1, EPOCHS+1):
         model.train()
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch}")
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch}")
         total_loss = 0
-        for x, y in pbar:
-            x, y = x.to(DEVICE), y.to(DEVICE)
-            optimizer.zero_grad()
+        optimizer.zero_grad()
 
-            with torch.cuda.amp.autocast(enabled=(DEVICE.type == 'cuda')):
+        for i, (x, y) in pbar:
+            x, y = x.to(DEVICE, non_blocking=True), y.to(DEVICE, non_blocking=True)
+
+            with torch.cuda.amp.autocast('cuda', enabled=(DEVICE.type == 'cuda')):
                 logits = model(x)
-                loss = criterion(logits.view(-1, VOCAB_SIZE), y.view(-1))
+                loss = criterion(logits.view(-1, VOCAB_SIZE), y.view(-1)) / GRADIENT_ACCUM_STEPS
 
             scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
 
-            total_loss += loss.item()
-            pbar.set_postfix(loss=loss.item())
+            if (i + 1) % GRADIENT_ACCUM_STEPS == 0 or (i + 1) == len(dataloader):
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+
+            total_loss += loss.item() * GRADIENT_ACCUM_STEPS  # unscale loss back
+            pbar.set_postfix(loss=loss.item() * GRADIENT_ACCUM_STEPS)
+
         avg_loss = total_loss / len(dataloader)
         print(f"Epoch {epoch} completed. Avg Loss: {avg_loss:.4f}")
         save_checkpoint(model, optimizer, epoch)
