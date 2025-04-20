@@ -28,6 +28,8 @@ def train(data_path):
     split_idx    = int(0.9 * len(tokens))     # 90% train / 10% val
     train_tokens = tokens[:split_idx]
     val_tokens   = tokens[split_idx:]
+    val_tokens = val_tokens[:2000]  # or even try 2000 for super fast evals
+
 
     train_loader = get_dataloader(train_tokens, BLOCK_SIZE+1, BATCH_SIZE)
     # we’ll recreate val_loader inside eval() as needed
@@ -72,6 +74,7 @@ def train(data_path):
 
             # ─── EVALUATE PERIODICALLY ───────────────────────────────────────
             if global_step % EVAL_INTERVAL == 0:
+                print(f"⏳ Starting evaluation at step {global_step}...")
                 val_loss, val_ppl = evaluate(
                     model,
                     val_tokens,
