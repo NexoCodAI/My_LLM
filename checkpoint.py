@@ -18,3 +18,11 @@ def save_checkpoint(model, optimizer, epoch, suffix=""):
         'epoch': epoch
     }, path)
     print(f"Saved checkpoint: {path}")
+
+def load_checkpoint(path, model, optimizer=None):
+    ckpt = torch.load(path)
+    model.load_state_dict(ckpt['model'])
+    if optimizer and 'optimizer' in ckpt:
+        optimizer.load_state_dict(ckpt['optimizer'])
+    return ckpt.get('epoch', None)
+
