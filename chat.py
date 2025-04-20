@@ -4,43 +4,52 @@ from model import LLM
 from tokenizer import SimpleTokenizer
 from evaluate import sample
 from checkpoint import load_checkpoint
-from config import *
+from config import CHECKPOINT_DIR, D_MODEL, N_LAYERS, N_HEADS, BLOCK_SIZE, DEVICE
 
 def chat():
-    # Load dialogue data for tokenizer context (same text used in training)
-    text_path = 'data/your_textfile.txt'  # adjust path if needed
+    # 1) Build tokenizer once
+    text_path = 'data/pride_and_prejudice.txt'
     with open(text_path, 'r', encoding='utf-8') as f:
         text = f.read()
     tokenizer = SimpleTokenizer([text])
-    global VOCAB_SIZE
-    VOCAB_SIZE = tokenizer.vocab_size
+    vocab_size = tokenizer.vocab_size
 
-    # Load latest checkpoint
-    checkpoint_files = sorted(os.listdir(CHECKPOINT_DIR), reverse=True)
-    if not checkpoint_files:
-        raise FileNotFoundError("No checkpoints found in " + CHECKPOINT_DIR)
-    latest_ckpt = os.path.join(CHECKPOINT_DIR, checkpoint_files[0])
+    # 2) Load latest checkpoint
+    ckpts = sorted(os.listdir(CHECKPOINT_DIR), reverse=True)
+    if not ckpts:
+        raise FileNotFoundError(f"No checkpoints in {CHECKPOINT_DIR}")
+    ckpt_path = os.path.join(CHECKPOINT_DIR, ckpts[0])
+    print(f"⏳ Loading {ckpt_path}…")
 
-    # Initialize model and load weights
-    model = LLM(VOCAB_SIZE, D_MODEL, N_LAYERS, N_HEADS, BLOCK_SIZE).to(DEVICE)
-    load_checkpoint(latest_ckpt, model)
+    # 3) Instantiate & load
+    model = LLM(vocab_size, D_MODEL, N_LAYERS, N_HEADS, BLOCK_SIZE).to(DEVICE)
+    try:
+        load_checkpoint(ckpt_path, model, optimizer=None)
+    except Exception:
+        # fallback if your checkpoint dict is nested
+        ckpt = torch.load(ckpt_path, map_location=DEVICE)
+        model.load_state_dict(ckpt['model'])
+    model.eval()
+    print("✅ Model loaded. Type your prompt (or ’quit’ to exit).")
 
-    print("=== Chat Mode ===\nType 'exit' to quit.\n")
-    conversation = ""
+    # 4) Chat loop
     while True:
-        user_input = input("User: ")
-        if user_input.strip().lower() == "exit":
+        prompt = input("\nYou: ")
+        if prompt.strip().lower() in ('quit', 'exit'):
             print("Goodbye!")
             break
-        # Append to history
-        conversation += f"User: {user_input}\nBot: "
-        # Generate a reply
-        response = sample(model, tokenizer, start_text=conversation, length=100, device=DEVICE)
-        # Extract only the new bot text
-        bot_reply = response[len(conversation):].split("\nUser:")[0].strip()
-        print(f"Bot: {bot_reply}\n")
-        # Update history
-        conversation += bot_reply + "\n"
+
+        # generate N tokens (you could also let sample() stream tokens back)
+        out = sample(
+            model, tokenizer,
+            start_text=prompt,
+            length=200,         # adjust how many tokens to generate
+            device=DEVICE
+        )
+        # strip off the original prompt if sample returns full text
+        response = out[len(prompt):] if out.startswith(prompt) else out
+        print(f"\nModel: {response}")
 
 if __name__ == "__main__":
     chat()
+
