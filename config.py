@@ -5,7 +5,7 @@ VOCAB_SIZE = None     # to be set after tokenizer initialization
 D_MODEL = 256
 N_LAYERS = 3
 N_HEADS = 4
-BLOCK_SIZE = 324      # context length
+BLOCK_SIZE = 512      # context length
 
 # Training hyperparameters
 BATCH_SIZE = 128
