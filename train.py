@@ -44,7 +44,7 @@ def train(data_path):
         for i, (x, y) in pbar:
             x, y = x.to(DEVICE, non_blocking=True), y.to(DEVICE, non_blocking=True)
 
-            with torch.cuda.amp.autocast('cuda', enabled=(DEVICE.type == 'cuda')):
+            with torch.cuda.amp.autocast(enabled=(DEVICE.type == 'cuda')):
                 logits = model(x)
                 loss = criterion(logits.view(-1, VOCAB_SIZE), y.view(-1)) / GRADIENT_ACCUM_STEPS
 
